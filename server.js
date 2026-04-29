@@ -102,6 +102,12 @@ function buildMessage(p) {
   };
 }
 
+// Bolna doesn't sign webhooks (no HMAC) at the time of writing; their docs
+// recommend IP whitelisting (13.203.39.153). We trust X-Forwarded-For because
+// behind a reverse proxy req.socket.remoteAddress is the proxy, not Bolna.
+// Caveats: assumes Bolna's IP doesn't rotate silently, and a compromised
+// proxy could forge the header. Better long-term: HMAC, or a shared secret
+// header configured on the agent's webhook URL.
 function clientIp(req) {
   const fwd = req.headers['x-forwarded-for'];
   if (typeof fwd === 'string' && fwd) return fwd.split(',')[0].trim();

@@ -106,13 +106,26 @@ size.
 
 A few things were worth thinking through.
 
-Authentication. Bolna doesn't sign their webhooks. The URL itself is
-the first secret: the path token in `WEBHOOK_TOKEN` is checked on
-every request. The second layer is the IP allowlist — their docs
-commit to a single source IP (`13.203.39.153`), so any production
-deploy can flip on `BOLNA_IP_ALLOWLIST` and reject the rest. If they
-add HMAC signing later, the token check is the obvious place to swap
-in a signature verifier.
+Webhook authentication. Bolna does not sign webhooks (no HMAC) as of
+this writing. Their docs recommend IP whitelisting (`13.203.39.153`).
+I implemented IP-based source verification using `X-Forwarded-For`,
+since deployments behind reverse proxies don't preserve the original
+client IP on `req.socket.remoteAddress`. As a second layer, the
+webhook URL itself carries a path token (`WEBHOOK_TOKEN`); requests
+without a matching token get rejected with `401`.
+
+Limitations and what I'd add in production:
+
+- IP-based auth assumes Bolna's IP doesn't rotate. If they add
+  another IP and forget to tell us, calls get dropped silently.
+  Mitigation: monitor the `403` rate from this endpoint.
+- IP-spoofing is theoretically possible if an attacker can forge
+  `X-Forwarded-For`. The reverse proxy strips and re-adds it, but a
+  compromised proxy is in scope.
+- Better long-term: push Bolna to add HMAC signing, or have them
+  include a shared secret in a header on the webhook config side.
+  When that lands, the token check in `server.js` is the obvious
+  place to swap in a signature verifier.
 
 Idempotency. Because the webhook fires on every status change, a
 single call can ship two terminal events back-to-back — for example a
