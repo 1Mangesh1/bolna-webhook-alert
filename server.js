@@ -179,6 +179,15 @@ app.post('/webhook/bolna/:token?', (req, res) => {
   inFlight.add(job);
 });
 
+app.get('/', (req, res) => {
+  res.json({
+    service: 'bolna-webhook-alert',
+    routes: ['POST /webhook/bolna/:token', 'GET /health'],
+  });
+});
+
+app.get('/health', (req, res) => res.json({ ok: true }));
+
 if (require.main === module) {
   const server = app.listen(PORT, () => {
     if (!SLACK_URL) console.warn('SLACK_WEBHOOK_URL not set');
