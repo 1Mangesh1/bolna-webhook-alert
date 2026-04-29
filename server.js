@@ -67,6 +67,10 @@ function buildMessage(p) {
 app.post('/webhook/bolna', async (req, res) => {
   const p = req.body || {};
 
+  if (!p.id || !p.agent_id) {
+    return res.status(400).json({ error: 'missing id or agent_id' });
+  }
+
   if (!ENDED.has(p.status)) {
     return res.json({ ignored: p.status });
   }
