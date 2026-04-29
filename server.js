@@ -1,5 +1,4 @@
 const express = require('express');
-const fs = require('fs');
 
 const app = express();
 app.set('trust proxy', true);
@@ -12,35 +11,16 @@ const ALLOWED_IPS = (process.env.BOLNA_WEBHOOK_IPS || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
-const DEDUP_FILE = process.env.DEDUP_FILE || '';
 const DEDUP_TTL_MS = 60 * 60 * 1000;
 const TRANSCRIPT_LIMIT = Number(process.env.TRANSCRIPT_LIMIT) || 2800;
 
-const seen = loadDedup();
-function loadDedup() {
-  if (!DEDUP_FILE) return new Map();
-  try {
-    return new Map(JSON.parse(fs.readFileSync(DEDUP_FILE, 'utf8')));
-  } catch {
-    return new Map();
-  }
-}
-
-let dedupWriteTimer = null;
-function persistDedup() {
-  if (!DEDUP_FILE) return;
-  clearTimeout(dedupWriteTimer);
-  dedupWriteTimer = setTimeout(() => {
-    fs.writeFile(DEDUP_FILE, JSON.stringify([...seen]), () => {});
-  }, 100);
-}
+const seen = new Map();
 
 function alreadyHandled(id) {
   const now = Date.now();
   for (const [k, t] of seen) if (now - t > DEDUP_TTL_MS) seen.delete(k);
   if (seen.has(id)) return true;
   seen.set(id, now);
-  persistDedup();
   return false;
 }
 

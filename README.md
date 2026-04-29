@@ -76,8 +76,6 @@ Edit `.env` and set:
   local dev so the smoke test on `127.0.0.1` still works. The list
   format means Bolna can add an IP and we update the env var without
   redeploying.
-- `DEDUP_FILE` — optional path. If set, the dedup state survives
-  process restarts.
 - `TRANSCRIPT_LIMIT` — optional, defaults to `2800`.
 - `PORT` — defaults to `3000`.
 
@@ -182,16 +180,15 @@ Limitations:
   swap the token check for a signature verifier — the call site
   in `server.js` is one line.
 
-Idempotency. Because the webhook fires on every status change, a
-single call can ship two terminal events back-to-back — for example
-a `call-disconnected` immediately followed by `completed`. Without
-dedup, that's two Slack messages for one call. The handler keeps a
-`Map<id, timestamp>` with a 1-hour TTL and quietly drops repeats.
-The TTL is swept on access so the map can't grow without bound. If
-`DEDUP_FILE` is set, the map gets serialized to JSON (debounced) so
-restarts don't replay alerts. The caveat: this is still
-single-process. Multi-replica deployments need to move dedup to
-Redis or a small DB table.
+Idempotency. Bolna's docs don't promise once-only delivery, and a
+single call can in theory ship two terminal events back-to-back — for
+example a `call-disconnected` followed by `completed`. To guard
+against that the handler keeps a `Map<id, timestamp>` with a 1-hour
+TTL and quietly drops repeats. The TTL is swept on access so the map
+can't grow without bound. The map is in-memory only; it resets on
+restart. That's fine for this scope (no observed duplicates in
+practice), but multi-replica deployments would need Redis or a small
+DB table.
 
 Slack delivery. The handler ACKs Bolna with `200` before it touches
 Slack, and the post happens in the background. Slack returns `429`
@@ -229,8 +226,8 @@ truncation is hurting day-to-day use.
 - **Long-transcript file uploads** — needs a bot-token transport and
   `files:write` scope. Documented as v2; gated on real demand.
 - **Persistent call log / DB** — out of scope for the assignment.
-  `DEDUP_FILE` shows the pattern (file-backed JSON) if it became
-  needed; SQLite would be the next step.
+  SQLite would be the next step if logs needed to outlive the
+  process.
 
 ## Logs
 
