@@ -5,6 +5,11 @@ app.use(express.json({ limit: '2mb' }));
 
 const SLACK_URL = process.env.SLACK_WEBHOOK_URL;
 const PORT = Number(process.env.PORT) || 3000;
+const TOKEN = process.env.WEBHOOK_TOKEN;
+const IP_ALLOWLIST = (process.env.BOLNA_IP_ALLOWLIST || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 const ENDED = new Set([
   'completed',
@@ -64,7 +69,23 @@ function buildMessage(p) {
   };
 }
 
-app.post('/webhook/bolna', async (req, res) => {
+function clientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (typeof fwd === 'string' && fwd) return fwd.split(',')[0].trim();
+  return (req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+}
+
+app.post('/webhook/bolna/:token?', async (req, res) => {
+  if (TOKEN && req.params.token !== TOKEN) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  if (IP_ALLOWLIST.length) {
+    const ip = clientIp(req);
+    if (!IP_ALLOWLIST.includes(ip)) {
+      return res.status(403).json({ error: 'forbidden_ip', ip });
+    }
+  }
+
   const p = req.body || {};
 
   if (!p.id || !p.agent_id) {
