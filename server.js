@@ -133,6 +133,8 @@ function log(event, fields) {
   console.log(JSON.stringify({ t: new Date().toISOString(), event, ...fields }));
 }
 
+const inFlight = new Set();
+
 app.post('/webhook/bolna/:token?', (req, res) => {
   if (TOKEN && req.params.token !== TOKEN) {
     return res.status(401).json({ error: 'unauthorized' });
@@ -163,12 +165,25 @@ app.post('/webhook/bolna/:token?', (req, res) => {
   res.json({ ok: true, id: p.id });
 
   const start = Date.now();
-  postToSlack(buildMessage(p))
+  const job = postToSlack(buildMessage(p))
     .then(() => log('slack_ok', { id: p.id, ms: Date.now() - start }))
-    .catch((err) => log('slack_fail', { id: p.id, err: err.message }));
+    .catch((err) => log('slack_fail', { id: p.id, err: err.message }))
+    .finally(() => inFlight.delete(job));
+  inFlight.add(job);
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`live at http://localhost:${PORT}/webhook/bolna`);
   log('listening', { port: PORT });
 });
+
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, async () => {
+    log('shutdown', { sig, in_flight: inFlight.size });
+    server.close();
+    const drained = Promise.allSettled([...inFlight]).then(() => 'drained');
+    const timeout = sleep(5000).then(() => 'timeout');
+    log('shutdown_done', { result: await Promise.race([drained, timeout]) });
+    process.exit(0);
+  });
+}
