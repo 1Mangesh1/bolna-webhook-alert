@@ -133,11 +133,12 @@ suite on every push, which is enough CI hygiene for a service this
 size.
 
 There's a tiny `GET /health` endpoint that returns `{"ok":true}`.
-Render's free tier sleeps the instance after 15 minutes of inactivity,
-which is bad for a webhook receiver — Bolna's POST would cold-start
-the dyno and the request can time out. Pointing UptimeRobot (or any
-similar uptime checker) at `/health` every 5 minutes keeps the
-instance warm and gives you a free liveness check on top.
+Render's free tier spins the service down after 15 minutes of
+inactivity, which is bad for a webhook receiver — Bolna's POST would
+cold-start the service and the request can time out. Pointing
+UptimeRobot (or any similar uptime checker) at `/health` every 5
+minutes keeps the service warm and gives you a free liveness check
+on top.
 
 ## Auth, retries, dedup, and other tradeoffs
 
