@@ -7,6 +7,10 @@ between Bolna's outbound webhook and a Slack incoming-webhook URL.
 
 ![Flow](docs/flow.png)
 
+This is what the alert looks like in Slack from a real Bolna call:
+
+![Slack alert](docs/slack-screenshot.png)
+
 ## Design notes
 
 Three things worth knowing if you're reviewing this:
