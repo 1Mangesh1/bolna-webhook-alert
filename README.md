@@ -5,6 +5,10 @@ to a Slack channel: the execution `id`, the `agent_id`, how long the
 call ran, and the transcript. It's a single Express endpoint sitting
 between Bolna's outbound webhook and a Slack incoming-webhook URL.
 
+- Live: https://bolna-webhook-alert.onrender.com (webhook at
+  `/webhook/bolna/<token>`, health at `/health`)
+- Repo: https://github.com/1Mangesh1/bolna-webhook-alert
+
 ![Flow](docs/flow.png)
 
 This is what the alert looks like in Slack from a real Bolna call:
