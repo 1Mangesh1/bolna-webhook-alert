@@ -125,12 +125,25 @@ the ngrok URL.
 
 ## Deploying it
 
-Anywhere that runs Node 20 works: Render, Fly, Railway, Vercel, an EC2
-box. Set the same env vars in the platform's dashboard, deploy from
-this repo, and update the agent's webhook URL in Bolna to match. The
-GitHub Actions workflow at `.github/workflows/test.yml` runs the test
-suite on every push, which is enough CI hygiene for a service this
-size.
+Anywhere that runs Node 20 works. There's a `render.yaml` blueprint
+in the repo for one-click Render deploys (Singapore region — closest
+to Bolna's Mumbai egress IP). Once it's pushed:
+
+1. Log in to the Render CLI: `render login`.
+2. In the Render dashboard, **New → Blueprint Instance**, point it at
+   this repo, accept the blueprint.
+3. Render reads `render.yaml`, provisions the service, and prompts
+   for the two `sync: false` secrets — `SLACK_WEBHOOK_URL` and
+   `WEBHOOK_TOKEN`. Paste yours and deploy.
+4. Use `render services` and `render logs` from the CLI to check
+   status afterwards.
+5. Update the Bolna agent's webhook URL to
+   `https://<service>.onrender.com/webhook/bolna/<token>`.
+
+For other platforms (Fly, Railway, Vercel, EC2): set the same env
+vars in their dashboard, point at this repo, deploy. The GitHub
+Actions workflow at `.github/workflows/test.yml` runs the test suite
+on every push, which is enough CI hygiene for a service this size.
 
 There's a tiny `GET /health` endpoint that returns `{"ok":true}`.
 Render's free tier spins the service down after 15 minutes of

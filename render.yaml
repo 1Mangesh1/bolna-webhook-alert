@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: bolna-webhook-alert
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: BOLNA_WEBHOOK_IPS
+        value: 13.203.39.153
+      - key: SLACK_WEBHOOK_URL
+        sync: false
+      - key: WEBHOOK_TOKEN
+        sync: false
