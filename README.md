@@ -5,6 +5,25 @@ to a Slack channel: the execution `id`, the `agent_id`, how long the
 call ran, and the transcript. It's a single Express endpoint sitting
 between Bolna's outbound webhook and a Slack incoming-webhook URL.
 
+![Flow](docs/flow.png)
+
+## Design notes
+
+Three things worth knowing if you're reviewing this:
+
+1. **Bolna doesn't sign webhooks**, so auth is an IP allowlist
+   (`13.203.39.153`, per
+   [their docs](https://www.bolna.ai/docs/polling-call-status-webhooks))
+   plus a path token. HMAC swap is one line if they add signing.
+2. **Webhooks fire on every status change**, so dedup is mandatory.
+   In-memory `Map<id, timestamp>` with a 1h TTL; multi-replica
+   deployments need to swap that for Redis.
+3. **Slack rate-limits under load**, so the handler ACKs Bolna with
+   `200` first and posts to Slack asynchronously, with retries
+   honouring `Retry-After`.
+
+The deeper write-up of each tradeoff is further down.
+
 ## How it actually works
 
 Bolna POSTs the full execution payload to whatever URL you configure
@@ -23,8 +42,8 @@ for the transcript.
 Duration's a small puzzle. Bolna's normal calls populate
 `conversation_time` (in seconds), but browser/demo calls sometimes
 ship without it. The fallback chain is `conversation_time` →
-`telephony_data.duration` → `(updated_at - created_at)`. It's caught
-every payload I've thrown at it so far.
+`telephony_data.duration` → `(updated_at - created_at)`. Tested
+against representative payloads from the dashboard.
 
 ## Running locally
 
@@ -63,17 +82,26 @@ npm start
 You should see `live at http://localhost:3000/webhook/bolna` in the
 console.
 
-## Smoke tests
+## Reviewing this
+
+If you want to verify the integration without setting up a Bolna
+account or a Slack workspace:
 
 ```
-npm test            # 6 tests against a stub Slack server, no network
-npm run test:local  # POSTs test/mock-payload.json to a running instance
+npm install
+npm test          # 6 tests against a stub Slack server, no network
 ```
 
-`npm run test:local` is the one-liner I used after every change. It
-hits the local server and forwards through to the real Slack URL in
-your `.env`, so a "Bolna call ended" message should land in your
-channel within a second or two.
+If you want it talking to a real Slack channel, fill in `.env` and:
+
+```
+npm start
+npm run test:local  # POSTs test/mock-payload.json to the running server
+```
+
+`test/mock-payload.json` mirrors a real Bolna `completed` execution.
+Within a second or two a "Bolna call ended" message lands in your
+channel.
 
 If you'd rather curl it yourself:
 
@@ -100,11 +128,7 @@ GitHub Actions workflow at `.github/workflows/test.yml` runs the test
 suite on every push, which is enough CI hygiene for a service this
 size.
 
-## What it looks like in Slack
-
-![Slack alert](docs/slack-screenshot.png)
-
-## Auth, retries, dedup, the boring stuff
+## Auth, retries, dedup, and other tradeoffs
 
 A few things were worth thinking through.
 
@@ -130,13 +154,13 @@ Limitations:
   in `server.js` is one line.
 
 Idempotency. Because the webhook fires on every status change, a
-single call can ship two terminal events back-to-back — for example a
-`call-disconnected` immediately followed by `completed`. Without
+single call can ship two terminal events back-to-back — for example
+a `call-disconnected` immediately followed by `completed`. Without
 dedup, that's two Slack messages for one call. The handler keeps a
 `Map<id, timestamp>` with a 1-hour TTL and quietly drops repeats.
 The TTL is swept on access so the map can't grow without bound. If
 `DEDUP_FILE` is set, the map gets serialized to JSON (debounced) so
-restarts don't replay alerts. The obvious caveat: this is still
+restarts don't replay alerts. The caveat: this is still
 single-process. Multi-replica deployments need to move dedup to
 Redis or a small DB table.
 
@@ -146,8 +170,8 @@ under load and `5xx` occasionally; `postToSlack` retries up to twice
 with linear backoff and honours `Retry-After` on rate limits. After
 that it gives up and logs `slack_fail` with the status and body. For
 an alerting service that's fine — losing a single notification is
-annoying but recoverable. If you needed stricter delivery you'd push
-the message onto a queue and have a worker drain it.
+annoying but recoverable. If you needed stricter delivery you'd
+push the message onto a queue and have a worker drain it.
 
 Graceful shutdown. On `SIGTERM` or `SIGINT` the server stops
 accepting new connections and waits up to 5 seconds for in-flight
@@ -164,6 +188,20 @@ bot token and attach the full transcript as a `.txt` file via
 `files.uploadV2`. That's a real auth/scope upgrade (`files:write`,
 bot installed in the channel), so it's not free — only worth it if
 truncation is hurting day-to-day use.
+
+## Not implemented (and why)
+
+- **HMAC signature verification** — Bolna doesn't sign webhooks
+  today. Verified against their docs. The auth code has the obvious
+  swap-in point if/when they ship it.
+- **Multi-replica dedup** — single-process `Map` is enough for this
+  scope. Redis swap is documented; no point implementing it before
+  there's a second replica to dedup against.
+- **Long-transcript file uploads** — needs a bot-token transport and
+  `files:write` scope. Documented as v2; gated on real demand.
+- **Persistent call log / DB** — out of scope for the assignment.
+  `DEDUP_FILE` shows the pattern (file-backed JSON) if it became
+  needed; SQLite would be the next step.
 
 ## Logs
 
