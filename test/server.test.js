@@ -85,3 +85,37 @@ test('dedups repeated id', async () => {
   const { json } = await makeRequest('/webhook/bolna/test-token', { ...mock, id: 'dup-1' });
   assert.equal(json.duplicate, 'dup-1');
 });
+
+test('retries on 429 then succeeds', async () => {
+  const before = slackHits.length;
+
+  let calls = 0;
+  const realListeners = slackServer.listeners('request').slice();
+  slackServer.removeAllListeners('request');
+  slackServer.on('request', (req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      calls += 1;
+      if (calls === 1) {
+        res.writeHead(429, { 'retry-after': '0' });
+        return res.end('rate limited');
+      }
+      slackHits.push(JSON.parse(body));
+      res.writeHead(200);
+      res.end('ok');
+    });
+  });
+
+  try {
+    await makeRequest('/webhook/bolna/test-token', { ...mock, id: 'retry-1' });
+    for (let i = 0; i < 40 && slackHits.length === before; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    assert.equal(calls, 2, 'should have tried twice');
+    assert.equal(slackHits.length, before + 1);
+  } finally {
+    slackServer.removeAllListeners('request');
+    realListeners.forEach((l) => slackServer.on('request', l));
+  }
+});
