@@ -42,11 +42,13 @@ Edit `.env` and set:
   rejected with `401`. Without setting `WEBHOOK_TOKEN` at all the
   endpoint is open, which is fine for local dev but obviously not
   what you want in production.
-- `BOLNA_IP_ALLOWLIST` — optional. Bolna's
+- `BOLNA_WEBHOOK_IPS` — optional, comma-separated. Bolna's
   [webhook docs](https://www.bolna.ai/docs/polling-call-status-webhooks)
   say all webhooks come from `13.203.39.153`. Set this in production
   and any request from another IP gets a `403`. Leave it unset for
-  local dev so the smoke test on `127.0.0.1` still works.
+  local dev so the smoke test on `127.0.0.1` still works. The list
+  format means Bolna can add an IP and we update the env var without
+  redeploying.
 - `DEDUP_FILE` — optional path. If set, the dedup state survives
   process restarts.
 - `TRANSCRIPT_LIMIT` — optional, defaults to `2800`.
@@ -106,26 +108,26 @@ size.
 
 A few things were worth thinking through.
 
-Webhook authentication. Bolna does not sign webhooks (no HMAC) as of
-this writing. Their docs recommend IP whitelisting (`13.203.39.153`).
-I implemented IP-based source verification using `X-Forwarded-For`,
-since deployments behind reverse proxies don't preserve the original
-client IP on `req.socket.remoteAddress`. As a second layer, the
-webhook URL itself carries a path token (`WEBHOOK_TOKEN`); requests
-without a matching token get rejected with `401`.
+Webhook authentication. Bolna does not sign webhooks (verified
+against their docs at
+[/docs/polling-call-status-webhooks](https://www.bolna.ai/docs/polling-call-status-webhooks)).
+Their published recommendation is IP whitelisting from
+`13.203.39.153`. This service implements IP-based source
+verification using `X-Forwarded-For` (with Express's `trust proxy`
+enabled) since deployments behind a reverse proxy don't preserve
+the original client IP on `req.socket.remoteAddress`. Allowed IPs
+are read from `BOLNA_WEBHOOK_IPS` so we can add IPs without
+redeploying. As a second layer, the webhook URL itself carries a
+path token (`WEBHOOK_TOKEN`); requests without it get a `401`.
 
-Limitations and what I'd add in production:
+Limitations:
 
-- IP-based auth assumes Bolna's IP doesn't rotate. If they add
-  another IP and forget to tell us, calls get dropped silently.
-  Mitigation: monitor the `403` rate from this endpoint.
-- IP-spoofing is theoretically possible if an attacker can forge
-  `X-Forwarded-For`. The reverse proxy strips and re-adds it, but a
-  compromised proxy is in scope.
-- Better long-term: push Bolna to add HMAC signing, or have them
-  include a shared secret in a header on the webhook config side.
-  When that lands, the token check in `server.js` is the obvious
-  place to swap in a signature verifier.
+- IP rotation by Bolna will silently drop webhooks until the env
+  var is updated. Mitigation: monitor the `403` rate from this
+  endpoint.
+- IP-based auth is weaker than HMAC. If Bolna adds signing later,
+  swap the token check for a signature verifier — the call site
+  in `server.js` is one line.
 
 Idempotency. Because the webhook fires on every status change, a
 single call can ship two terminal events back-to-back — for example a

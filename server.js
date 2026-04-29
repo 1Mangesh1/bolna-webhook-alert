@@ -2,12 +2,13 @@ const express = require('express');
 const fs = require('fs');
 
 const app = express();
+app.set('trust proxy', true);
 app.use(express.json({ limit: '2mb' }));
 
 const SLACK_URL = process.env.SLACK_WEBHOOK_URL;
 const PORT = Number(process.env.PORT) || 3000;
 const TOKEN = process.env.WEBHOOK_TOKEN;
-const IP_ALLOWLIST = (process.env.BOLNA_IP_ALLOWLIST || '')
+const ALLOWED_IPS = (process.env.BOLNA_WEBHOOK_IPS || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
@@ -103,11 +104,11 @@ function buildMessage(p) {
 }
 
 // Bolna doesn't sign webhooks (no HMAC) at the time of writing; their docs
-// recommend IP whitelisting (13.203.39.153). We trust X-Forwarded-For because
-// behind a reverse proxy req.socket.remoteAddress is the proxy, not Bolna.
-// Caveats: assumes Bolna's IP doesn't rotate silently, and a compromised
-// proxy could forge the header. Better long-term: HMAC, or a shared secret
-// header configured on the agent's webhook URL.
+// at /docs/polling-call-status-webhooks recommend IP whitelisting from
+// 13.203.39.153. We trust X-Forwarded-For (express trust proxy is on)
+// because behind a reverse proxy req.socket.remoteAddress is the proxy.
+// Allowed IPs come from BOLNA_WEBHOOK_IPS so we can add an IP without a
+// redeploy. If Bolna adds HMAC later, swap this for signature verification.
 function clientIp(req) {
   const fwd = req.headers['x-forwarded-for'];
   if (typeof fwd === 'string' && fwd) return fwd.split(',')[0].trim();
@@ -145,9 +146,9 @@ app.post('/webhook/bolna/:token?', (req, res) => {
   if (TOKEN && req.params.token !== TOKEN) {
     return res.status(401).json({ error: 'unauthorized' });
   }
-  if (IP_ALLOWLIST.length) {
+  if (ALLOWED_IPS.length) {
     const ip = clientIp(req);
-    if (!IP_ALLOWLIST.includes(ip)) {
+    if (!ALLOWED_IPS.includes(ip)) {
       return res.status(403).json({ error: 'forbidden_ip', ip });
     }
   }
