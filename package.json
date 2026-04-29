@@ -4,7 +4,9 @@
   "private": true,
   "main": "server.js",
   "scripts": {
-    "start": "node --env-file=.env server.js"
+    "start": "node --env-file=.env server.js",
+    "test": "node --test test/server.test.js",
+    "test:local": "node --env-file=.env test/send-mock.js"
   },
   "engines": { "node": ">=20" },
   "dependencies": {

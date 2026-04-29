@@ -172,18 +172,24 @@ app.post('/webhook/bolna/:token?', (req, res) => {
   inFlight.add(job);
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`live at http://localhost:${PORT}/webhook/bolna`);
-  log('listening', { port: PORT });
-});
-
-for (const sig of ['SIGTERM', 'SIGINT']) {
-  process.on(sig, async () => {
-    log('shutdown', { sig, in_flight: inFlight.size });
-    server.close();
-    const drained = Promise.allSettled([...inFlight]).then(() => 'drained');
-    const timeout = sleep(5000).then(() => 'timeout');
-    log('shutdown_done', { result: await Promise.race([drained, timeout]) });
-    process.exit(0);
+if (require.main === module) {
+  const server = app.listen(PORT, () => {
+    if (!SLACK_URL) console.warn('SLACK_WEBHOOK_URL not set');
+    if (!TOKEN) console.warn('WEBHOOK_TOKEN not set, endpoint is open');
+    console.log(`live at http://localhost:${PORT}/webhook/bolna`);
+    log('listening', { port: PORT });
   });
+
+  for (const sig of ['SIGTERM', 'SIGINT']) {
+    process.on(sig, async () => {
+      log('shutdown', { sig, in_flight: inFlight.size });
+      server.close();
+      const drained = Promise.allSettled([...inFlight]).then(() => 'drained');
+      const timeout = sleep(5000).then(() => 'timeout');
+      log('shutdown_done', { result: await Promise.race([drained, timeout]) });
+      process.exit(0);
+    });
+  }
 }
+
+module.exports = app;

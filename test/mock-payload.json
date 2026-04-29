@@ -1,0 +1,7 @@
+{
+  "id": "4c06b4d1-4096-4561-919a-4f94539c8d4a",
+  "agent_id": "d311e737-70e6-4075-bef6-c0ef3a7026b4",
+  "status": "completed",
+  "conversation_time": 87,
+  "transcript": "assistant: Hi, this is a demo call from Bolna.\nuser: Hey, how are you?\nassistant: Doing great, thanks. How can I help today?\nuser: Just testing the integration.\nassistant: Got it. Have a good one!"
+}
