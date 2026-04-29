@@ -1,4 +1,5 @@
 const express = require('express');
+const fs = require('fs');
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -10,6 +11,36 @@ const IP_ALLOWLIST = (process.env.BOLNA_IP_ALLOWLIST || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
+const DEDUP_FILE = process.env.DEDUP_FILE || '';
+const DEDUP_TTL_MS = 60 * 60 * 1000;
+
+const seen = loadDedup();
+function loadDedup() {
+  if (!DEDUP_FILE) return new Map();
+  try {
+    return new Map(JSON.parse(fs.readFileSync(DEDUP_FILE, 'utf8')));
+  } catch {
+    return new Map();
+  }
+}
+
+let dedupWriteTimer = null;
+function persistDedup() {
+  if (!DEDUP_FILE) return;
+  clearTimeout(dedupWriteTimer);
+  dedupWriteTimer = setTimeout(() => {
+    fs.writeFile(DEDUP_FILE, JSON.stringify([...seen]), () => {});
+  }, 100);
+}
+
+function alreadyHandled(id) {
+  const now = Date.now();
+  for (const [k, t] of seen) if (now - t > DEDUP_TTL_MS) seen.delete(k);
+  if (seen.has(id)) return true;
+  seen.set(id, now);
+  persistDedup();
+  return false;
+}
 
 const ENDED = new Set([
   'completed',
@@ -94,6 +125,10 @@ app.post('/webhook/bolna/:token?', async (req, res) => {
 
   if (!ENDED.has(p.status)) {
     return res.json({ ignored: p.status });
+  }
+
+  if (alreadyHandled(p.id)) {
+    return res.json({ duplicate: p.id });
   }
 
   await fetch(SLACK_URL, {
