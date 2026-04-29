@@ -158,7 +158,12 @@ Transcripts. Slack's `section` block caps at roughly 3000 characters.
 Transcripts longer than that get truncated with a tail line noting
 the full length and pointing back at Bolna's `GET /executions/{id}`
 so a curious reader can pull the complete record. The cap itself is
-configurable via `TRANSCRIPT_LIMIT`.
+configurable via `TRANSCRIPT_LIMIT`. Future v2: if long transcripts
+become the common case, switch transport from incoming-webhook to a
+bot token and attach the full transcript as a `.txt` file via
+`files.uploadV2`. That's a real auth/scope upgrade (`files:write`,
+bot installed in the channel), so it's not free — only worth it if
+truncation is hurting day-to-day use.
 
 ## Logs
 
