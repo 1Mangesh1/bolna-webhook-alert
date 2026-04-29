@@ -169,6 +169,11 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 if (require.main === module) {
+  if (process.env.NODE_ENV === 'production' && !TOKEN) {
+    console.error('WEBHOOK_TOKEN must be set in production');
+    process.exit(1);
+  }
+
   const server = app.listen(PORT, () => {
     if (!SLACK_URL) console.warn('SLACK_WEBHOOK_URL not set');
     if (!TOKEN) console.warn('WEBHOOK_TOKEN not set, endpoint is open');

@@ -64,11 +64,10 @@ Edit `.env` and set:
 
 - `SLACK_WEBHOOK_URL` — create one at https://api.slack.com/apps
   (Incoming Webhooks → add to workspace → copy the URL).
-- `WEBHOOK_TOKEN` — anything long and random. The webhook URL becomes
-  `/webhook/bolna/<token>`; without a matching token requests get
-  rejected with `401`. Without setting `WEBHOOK_TOKEN` at all the
-  endpoint is open, which is fine for local dev but obviously not
-  what you want in production.
+- `WEBHOOK_TOKEN` — long random string. The webhook URL becomes
+  `/webhook/bolna/<token>`; mismatches get a `401`. Required in
+  production (server refuses to start when `NODE_ENV=production`
+  and `WEBHOOK_TOKEN` is unset). Optional in local dev.
 - `BOLNA_WEBHOOK_IPS` — optional, comma-separated. Bolna's
   [webhook docs](https://www.bolna.ai/docs/polling-call-status-webhooks)
   say all webhooks come from `13.203.39.153`. Set this in production
@@ -131,16 +130,17 @@ Anywhere that runs Node 20 works. There's a `render.yaml` blueprint
 in the repo for one-click Render deploys (Singapore region — closest
 to Bolna's Mumbai egress IP). Once it's pushed:
 
-1. Log in to the Render CLI: `render login`.
-2. In the Render dashboard, **New → Blueprint Instance**, point it at
+1. In the Render dashboard, **New → Blueprint Instance**, point it at
    this repo, accept the blueprint.
-3. Render reads `render.yaml`, provisions the service, and prompts
+2. Render reads `render.yaml`, provisions the service, and prompts
    for the two `sync: false` secrets — `SLACK_WEBHOOK_URL` and
    `WEBHOOK_TOKEN`. Paste yours and deploy.
-4. Use `render services` and `render logs` from the CLI to check
-   status afterwards.
-5. Update the Bolna agent's webhook URL to
+3. Update the Bolna agent's webhook URL to
    `https://<service>.onrender.com/webhook/bolna/<token>`.
+
+Render injects its own `PORT` automatically; don't override it.
+For day-to-day ops the Render CLI is handy — `render login` once,
+then `render services` and `render logs --resources <srv-id>`.
 
 For other platforms (Fly, Railway, Vercel, EC2): set the same env
 vars in their dashboard, point at this repo, deploy. The GitHub
@@ -180,15 +180,14 @@ Limitations:
   swap the token check for a signature verifier — the call site
   in `server.js` is one line.
 
-Idempotency. Bolna's docs don't promise once-only delivery, and a
-single call can in theory ship two terminal events back-to-back — for
-example a `call-disconnected` followed by `completed`. To guard
-against that the handler keeps a `Map<id, timestamp>` with a 1-hour
-TTL and quietly drops repeats. The TTL is swept on access so the map
-can't grow without bound. The map is in-memory only; it resets on
-restart. That's fine for this scope (no observed duplicates in
-practice), but multi-replica deployments would need Redis or a small
-DB table.
+Idempotency. Bolna's docs don't promise once-only delivery, and the
+webhook fires on every status change — a single call can ship two
+terminal events back-to-back, for example a `call-disconnected`
+followed by `completed`. The handler keeps a `Map<id, timestamp>`
+with a 1-hour TTL and quietly drops repeats. The TTL is swept on
+access so the map can't grow without bound. The map is in-memory
+only and resets on restart. That's fine for a single replica;
+multi-replica deployments would need Redis or a small DB table.
 
 Slack delivery. The handler ACKs Bolna with `200` before it touches
 Slack, and the post happens in the background. Slack returns `429`
@@ -245,7 +244,7 @@ Events you'll see: `listening`, `ignored` (non-terminal status),
 
 ## Files
 
-- `server.js` — the whole service, around 180 lines.
+- `server.js` — the whole service.
 - `test/server.test.js` — six tests using `node:test`, with a stub
   Slack server.
 - `test/mock-payload.json` — a representative `completed` execution.
